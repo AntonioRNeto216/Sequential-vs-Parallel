@@ -31,8 +31,6 @@ void performFilter(
     int mm, nn, ii, jj;
     float pixelResult;
 
-    printf("num rows: %d| num cols: %d \n", rows, cols);
-
     for (int i = 0; i < rows; ++i)
     {
         for (int j = 0; j < cols; ++j)
@@ -61,8 +59,6 @@ void performFilter(
             result->at<uchar>(i, j) = cv::saturate_cast<uchar>(pixelResult);
         }
     }
-
-    printf("Acabou\n");
 }
 
 void performSequencialMethod(
@@ -71,8 +67,11 @@ void performSequencialMethod(
     Filters_t *filters
 )
 {
-    for (cv::Mat currentFrame : *all_video_frames)
+    cv::Mat currentFrame;
+    for (int i = 0; i < all_video_frames->size(); ++i)
     {
+        currentFrame = all_video_frames->at(i);
+
         int rows = currentFrame.rows;
         int cols = currentFrame.cols;
         
@@ -106,7 +105,7 @@ void performSequencialMethod(
             cols
         );
 
-        all_performed_video_frames->push_back(h2Results);
+        all_performed_video_frames->at(i) = h2Results;
     }
 }
 
@@ -129,27 +128,29 @@ void *threadFunction(
         
         if (*index == input->size() - 1)
         {
-            printf("Dentro IF\n");
             pthread_mutex_unlock(mutex);
             break;
         }
 
-        printf("index %d\n", *index);
         local_index = *index;
-        printf("index %d\n", *index);
         (*index)++;
         
         pthread_mutex_unlock(mutex);
 
-        // performFilter(
-        //     &input->at(local_index),
-        //     &result->at(local_index),
-        //     filter,
-        //     input->at(local_index).size().height,
-        //     input->at(local_index).size().width
-        // );
+        cv::Mat resultValue = cv::Mat::zeros(
+            input->at(local_index).size(), 
+            input->at(local_index).type()
+        );
 
-        //printf("Depois filtro (index = %d)\n", *index);
+        performFilter(
+            &input->at(local_index),
+            &resultValue,
+            filter,
+            input->at(local_index).size().height,
+            input->at(local_index).size().width
+        );
+
+        result->at(local_index) = resultValue;
     }
 
     pthread_exit(NULL);
@@ -166,7 +167,7 @@ void performParallelMethod(
     int index_to_process_input = 0;
     std::vector<pthread_t> threads_input(*numThreads);
     std::vector<cv::Mat> buffer(all_video_frames->size());
-    std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_input;
+    std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_input(*numThreads);
 
     pthread_mutex_t mutex_index_to_process_input;
     pthread_mutex_init(&mutex_index_to_process_input, NULL);
@@ -181,14 +182,11 @@ void performParallelMethod(
 
     for (int i = 0; i < *numThreads; ++i)
     {
-        PerformFilterParallelParameters_t performFilterParallelParameters_input;
-        performFilterParallelParameters_input.input = all_video_frames;
-        performFilterParallelParameters_input.result = &buffer;
-        performFilterParallelParameters_input.filter = &filters->h1;
-        performFilterParallelParameters_input.index = &index_to_process_input;
-        performFilterParallelParameters_input.mutex = &mutex_index_to_process_input;
-
-        vector_performFilterParallelParameters_input.push_back(performFilterParallelParameters_input);
+        vector_performFilterParallelParameters_input[i].input = all_video_frames;
+        vector_performFilterParallelParameters_input[i].result = all_performed_video_frames;//&buffer;
+        vector_performFilterParallelParameters_input[i].filter = &filters->h1;
+        vector_performFilterParallelParameters_input[i].index = &index_to_process_input;
+        vector_performFilterParallelParameters_input[i].mutex = &mutex_index_to_process_input;
 
         pthread_create(&threads_input[i], NULL, threadFunction, (void*)&vector_performFilterParallelParameters_input[i]);
 
@@ -267,7 +265,6 @@ int main()
     cv::VideoCapture videoCapture;
 
     std::vector<cv::Mat> all_video_frames;
-    std::vector<cv::Mat> all_performed_video_frames;
 
     clock_t begin_time;
     clock_t end_time;
@@ -275,9 +272,12 @@ int main()
     std::cout << "Getting source video ... " << std::endl;
     getFrames(&all_video_frames, &videoCapture, &video);
 
+    std::vector<cv::Mat> all_performed_video_frames(all_video_frames.size());
+
     begin_time = clock();
 
     std::cout << "Performing filters ... " << std::endl;
+    //performSequencialMethod(&all_video_frames, &all_performed_video_frames, &filters);
     performParallelMethod(&all_video_frames, &all_performed_video_frames, &filters, &numThreads);
 
     end_time = clock();
