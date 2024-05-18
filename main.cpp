@@ -1,14 +1,9 @@
 #include <iostream>
 #include <vector>
+#include <unistd.h> 
 #include <pthread.h>
 #include <opencv2/opencv.hpp>
 
-enum Method
-{
-    SEQUENTIAL,
-    PARALLEL,
-    PARALLEL_OPEN_MP
-};
 
 typedef struct Filters_s
 {
@@ -16,17 +11,16 @@ typedef struct Filters_s
     cv::Mat h2 = (cv::Mat_<float>(3,3) << -1, -1, -1, -1, 8, -1, -1, -1, -1);
 } Filters_t;
 
-typedef struct PerformFilterParameters_s
+typedef struct PerformFilterParallelParameters_s
 {
-    cv::Mat *input;
-    cv::Mat *result;
+    std::vector<cv::Mat> *input;
+    std::vector<cv::Mat> *result;
     cv::Mat *filter;
-    int rows;
-    int cols;
-} PerformFilterParameters_t;
+    int *index;
+    pthread_mutex_t *mutex;
+} PerformFilterParallelParameters_t;
 
-void initializePerformFilterParametersValues(
-    PerformFilterParameters_t *performFiltersParameters,
+void performFilter(
     cv::Mat *input,
     cv::Mat *result,
     cv::Mat *filter,
@@ -34,23 +28,14 @@ void initializePerformFilterParametersValues(
     int cols
 )
 {
-    performFiltersParameters->input = input; 
-    performFiltersParameters->result = result;
-    performFiltersParameters->filter = filter;
-    performFiltersParameters->rows = rows;
-    performFiltersParameters->cols = cols;
-}
-
-void performFilterSequencial(
-    PerformFilterParameters_t *performFiltersParameters
-)
-{
     int mm, nn, ii, jj;
     float pixelResult;
 
-    for (int i = 0; i < performFiltersParameters->rows; ++i)
+    printf("num rows: %d| num cols: %d \n", rows, cols);
+
+    for (int i = 0; i < rows; ++i)
     {
-        for (int j = 0; j < performFiltersParameters->cols; ++j)
+        for (int j = 0; j < cols; ++j)
         {
             pixelResult = 0.0;
 
@@ -65,258 +50,242 @@ void performFilterSequencial(
                     ii = i + (1 - mm);
                     jj = j + (1 - nn);
 
-                    if (ii >= 0 && ii < performFiltersParameters->rows && jj >= 0 && jj < performFiltersParameters->cols)
+                    if (ii >= 0 && ii < rows && jj >= 0 && jj < cols)
                     {
-                        pixelResult += performFiltersParameters->input->at<uchar>(ii, jj) * performFiltersParameters->filter->at<float>(mm, nn);
+                        pixelResult += input->at<uchar>(ii, jj) * filter->at<float>(mm, nn);
                     }
 
                 }
             }
 
-            performFiltersParameters->result->at<uchar>(i, j) = cv::saturate_cast<uchar>(pixelResult);
+            result->at<uchar>(i, j) = cv::saturate_cast<uchar>(pixelResult);
         }
     }
+
+    printf("Acabou\n");
 }
 
-cv::Mat performSequencialMethod(
-    cv::Mat *currentFrame,
+void performSequencialMethod(
+    std::vector<cv::Mat> *all_video_frames,
+    std::vector<cv::Mat> *all_performed_video_frames,
     Filters_t *filters
 )
 {
-    int rows = currentFrame->rows;
-    int cols = currentFrame->cols;
-    
-    // Perform h1 filter
+    for (cv::Mat currentFrame : *all_video_frames)
+    {
+        int rows = currentFrame.rows;
+        int cols = currentFrame.cols;
+        
+        // Perform h1 filter
 
-    cv::Mat h1Results = cv::Mat::zeros(
-        currentFrame->size(), 
-        currentFrame->type()
-    );
-    
-    PerformFilterParameters_t performFiltersParameters_H1;
-    initializePerformFilterParametersValues(
-        &performFiltersParameters_H1, 
-        currentFrame, 
-        &h1Results, 
-        &filters->h1, 
-        rows, 
-        cols
-    );
-    
-    performFilterSequencial(&performFiltersParameters_H1);
+        cv::Mat h1Results = cv::Mat::zeros(
+            currentFrame.size(), 
+            currentFrame.type()
+        );
 
-    // Perform h2 filter
+        cv::Mat h2Results = cv::Mat::zeros(
+            currentFrame.size(), 
+            currentFrame.type()
+        );
+        
+        performFilter(
+            &currentFrame, 
+            &h1Results, 
+            &filters->h1, 
+            rows, 
+            cols
+        );
 
-    cv::Mat h2Results = cv::Mat::zeros(
-        performFiltersParameters_H1.result->size(), 
-        performFiltersParameters_H1.result->type()
-    );
+        // Perform h2 filter
 
-    PerformFilterParameters_t performFiltersParameters_H2;
-    initializePerformFilterParametersValues(
-        &performFiltersParameters_H2, 
-        performFiltersParameters_H1.result, 
-        &h2Results, 
-        &filters->h2, 
-        rows, 
-        cols
-    );
+        performFilter(
+            &h1Results, 
+            &h2Results, 
+            &filters->h2, 
+            rows, 
+            cols
+        );
 
-    performFilterSequencial(&performFiltersParameters_H2);
-    
-    return h2Results;
+        all_performed_video_frames->push_back(h2Results);
+    }
 }
 
-void* performFilterParallel(
-    void* arg
-) 
-{ 
-    PerformFilterParameters_t *args = (PerformFilterParameters_t *)arg;
+void *threadFunction(
+    void *arg
+)
+{
+    PerformFilterParallelParameters_t *args = (PerformFilterParallelParameters_t *)arg;
 
-    cv::Mat *input = args->input;
-    cv::Mat *result = args->result;
+    std::vector<cv::Mat> *input = args->input;
+    std::vector<cv::Mat> *result = args->result;
     cv::Mat *filter = args->filter;
-    int rows = args->rows;
-    int cols = args->cols;
-    
-    float pixelResult = 0.0;
+    int *index = args->index;
+    pthread_mutex_t *mutex = args->mutex;
 
-    int mm, nn, ii, jj;
-
-    for (int ik = 0; ik < 3; ++ik)
+    int local_index;
+    while (true)
     {
-        mm = 2 - ik;
-
-        for (int jk = 0; jk < 3; ++jk)
+        pthread_mutex_lock(mutex);
+        
+        if (*index == input->size() - 1)
         {
-            nn = 2 - jk;
-            
-            ii = rows + (1 - mm);
-            jj = cols + (1 - nn);
-
-            if (ii >= 0 && ii < rows && jj >= 0 && jj < cols)
-            {
-                pixelResult += input->at<uchar>(ii, jj) * filter->at<float>(mm, nn);
-            }
-
+            printf("Dentro IF\n");
+            pthread_mutex_unlock(mutex);
+            break;
         }
+
+        printf("index %d\n", *index);
+        local_index = *index;
+        printf("index %d\n", *index);
+        (*index)++;
+        
+        pthread_mutex_unlock(mutex);
+
+        // performFilter(
+        //     &input->at(local_index),
+        //     &result->at(local_index),
+        //     filter,
+        //     input->at(local_index).size().height,
+        //     input->at(local_index).size().width
+        // );
+
+        //printf("Depois filtro (index = %d)\n", *index);
     }
 
-    result->at<uchar>(rows, cols) = cv::saturate_cast<uchar>(pixelResult);
+    pthread_exit(NULL);
+}
 
-    pthread_exit(NULL); 
-} 
-  
-cv::Mat performParallelMethod(
-    cv::Mat *currentFrame,
-    Filters_t *filters
-) 
-{ 
-    pthread_t thread; 
-
-    int rows = currentFrame->rows;
-    int cols = currentFrame->cols;
-    int numThreads = rows * cols;
-
-    std::vector<pthread_t> threads(numThreads);
-    std::vector<PerformFilterParameters_t> args(numThreads);
-    
-    cv::Mat h1Results = cv::Mat::zeros(currentFrame->size(), currentFrame->type());
-    printf("---h1---\n");
-
-    for (int i = 0; i < rows; ++i)
-    {
-        for (int j = 0; j < cols; ++j)
-        {
-            PerformFilterParameters_t performFiltersParameters_H1;
-            initializePerformFilterParametersValues(
-                &performFiltersParameters_H1, 
-                currentFrame, 
-                &h1Results, 
-                &filters->h1, 
-                i, 
-                j
-            );
-            args.at(i * cols + j) = performFiltersParameters_H1;
-            pthread_create(&thread, NULL, &performFilterParallel, &args.at(i * cols + j)); 
-        }
-    }
-
-    for (int i = 0; i < numThreads; ++i)
-    {
-        pthread_join(threads[i], NULL);
-    }
-
-    printf("Depois join\n");
-
-    // threads.clear();
-    // args.clear();
-
-    cv::Mat h2Results = cv::Mat::zeros(currentFrame->size(), currentFrame->type());
-
-    for (int i = 0; i < rows; ++i)
-    {
-        for (int j = 0; j < cols; ++j)
-        {
-            PerformFilterParameters_t performFiltersParameters_H2;
-            initializePerformFilterParametersValues(
-                &performFiltersParameters_H2, 
-                &h1Results, 
-                &h2Results, 
-                &filters->h2, 
-                rows, 
-                cols
-            );
-            args.at(i * cols + j) = performFiltersParameters_H2;
-            pthread_create(&thread, NULL, &performFilterParallel, &args.at(i * cols + j)); 
-        }
-    }
-
-    for (int i = 0; i < numThreads; ++i)
-    {
-        pthread_join(threads[i], NULL);
-    }
-  
-    return h1Results;
-} 
-
-
-void playVideo(
-    cv::VideoCapture *videoCapture,
+void performParallelMethod(
+    std::vector<cv::Mat> *all_video_frames,
+    std::vector<cv::Mat> *all_performed_video_frames,
     Filters_t *filters,
-    const std::string video_path,
-    const Method method
+    int *numThreads
 )
 {
-    cv::Mat currentFrame;
-    cv::Mat performedFrame;
+    // Input -> buffer
+    int index_to_process_input = 0;
+    std::vector<pthread_t> threads_input(*numThreads);
+    std::vector<cv::Mat> buffer(all_video_frames->size());
+    std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_input;
 
-    int number_of_images = 0;
-    float amount_time = 0.0;
+    pthread_mutex_t mutex_index_to_process_input;
+    pthread_mutex_init(&mutex_index_to_process_input, NULL);
+    
+    // Buffer -> output
+    // int index_to_process_buffer = -1;
+    // std::vector<pthread_t> threads_output(*numThreads);
+    // std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_buffer;
 
-    videoCapture->open(video_path);
+    // pthread_mutex_t mutex_index_to_process_output;
+    // pthread_mutex_init(&mutex_index_to_process_output, NULL);
+
+    for (int i = 0; i < *numThreads; ++i)
+    {
+        PerformFilterParallelParameters_t performFilterParallelParameters_input;
+        performFilterParallelParameters_input.input = all_video_frames;
+        performFilterParallelParameters_input.result = &buffer;
+        performFilterParallelParameters_input.filter = &filters->h1;
+        performFilterParallelParameters_input.index = &index_to_process_input;
+        performFilterParallelParameters_input.mutex = &mutex_index_to_process_input;
+
+        vector_performFilterParallelParameters_input.push_back(performFilterParallelParameters_input);
+
+        pthread_create(&threads_input[i], NULL, threadFunction, (void*)&vector_performFilterParallelParameters_input[i]);
+
+        // PerformFilterParallelParameters_t performFilterParallelParameters_buffer;
+        // performFilterParallelParameters_buffer.input = &buffer;
+        // performFilterParallelParameters_buffer.result = all_performed_video_frames;
+        // performFilterParallelParameters_buffer.filter = &filters->h2;
+        // performFilterParallelParameters_buffer.index = &index_to_process_buffer;
+        // performFilterParallelParameters_buffer.mutex = &mutex_index_to_process_output;
+
+        // vector_performFilterParallelParameters_buffer.push_back(performFilterParallelParameters_buffer);
+
+        // pthread_create(&threads_output[i], NULL, threadFunction, (void*)&vector_performFilterParallelParameters_buffer[i]);
+    }
+
+    for (int i = 0; i < *numThreads; ++i) 
+    {
+        pthread_join(threads_input[i], NULL);
+        // pthread_join(threads_output[i], NULL);
+    }
+
+    pthread_mutex_destroy(&mutex_index_to_process_input);
+    // pthread_mutex_destroy(&mutex_index_to_process_output);
+}
+
+void getFrames(
+    std::vector<cv::Mat> *all_video_frames,
+    cv::VideoCapture *videoCapture,
+    std::string *video_path
+)
+{
+    videoCapture->open(*video_path);
 
     if (!videoCapture->isOpened())
     {
-        std::cout << "Failed to open video: " << video_path << std::endl;
+        std::cout << "Failed to open video: " << *video_path << std::endl;
         return;
     }
 
-    do
+    cv::Mat currentFrame;
+    
+    while(videoCapture->read(currentFrame))
     {
-        if (!videoCapture->read(currentFrame))
-            break;
-
-        cv::cvtColor(currentFrame, currentFrame, cv::COLOR_BGR2GRAY); 
-
-        clock_t begin_time = clock();
-
-        switch (method)
-        {
-        case PARALLEL:
-            performedFrame = performParallelMethod(&currentFrame, filters);
-            break;
-        case PARALLEL_OPEN_MP:
-            /* code */
-            break;
-        default:
-            performedFrame = performSequencialMethod(&currentFrame, filters);
-            break;
-        }
-
-        number_of_images++;
-        amount_time += float(clock() - begin_time ) / CLOCKS_PER_SEC;
-
-        cv::imshow("Frame", performedFrame);
-        cv::waitKey(1);
-
-    } while (videoCapture->isOpened());
-
-    std::string method_string;
-    switch (method)
-    {
-    case PARALLEL:
-        method_string = "Parallel";
-        break;
-    case PARALLEL_OPEN_MP:
-        method_string = "Parallel OpenMP";
-        break;
-    default:
-        method_string = "Sequencial";
-        break;
+        cv::cvtColor(currentFrame, currentFrame, cv::COLOR_BGR2GRAY);
+        all_video_frames->push_back(currentFrame.clone());
     }
-    std::cout << "Mean[" << method_string << "] = "<< amount_time << "/" << number_of_images << " = " << amount_time / number_of_images << std::endl;
+
+    videoCapture->release();
 }
 
+void playPerformedVideo(
+    std::vector<cv::Mat> *all_video_frames
+)
+{
+    const std::string windowName = "Perfomed Video";
+
+    cv::namedWindow(windowName, cv::WINDOW_NORMAL);
+
+    for (int i = 0; i < all_video_frames->size(); ++i)
+    {
+        cv::imshow(windowName, all_video_frames->at(i));
+        cv::waitKey(33);
+    }
+
+    cv::destroyWindow(windowName);
+}
 
 int main()
 {
-    cv::VideoCapture videoCapture;
-    Filters_t filters;
+    // -------
+    int numThreads = 4;
+    std::string video = "videos/1.mp4";
+    // -------
 
-    playVideo(&videoCapture, &filters, "videos/1.mp4", SEQUENTIAL);
-    //playVideo(&videoCapture, &filters, "videos/1.mp4", PARALLEL);
-    //playVideo(&videoCapture, &filters, "videos/1.mp4", PARALLEL_OPEN_MP);
+    Filters_t filters;
+    cv::VideoCapture videoCapture;
+
+    std::vector<cv::Mat> all_video_frames;
+    std::vector<cv::Mat> all_performed_video_frames;
+
+    clock_t begin_time;
+    clock_t end_time;
+
+    std::cout << "Getting source video ... " << std::endl;
+    getFrames(&all_video_frames, &videoCapture, &video);
+
+    begin_time = clock();
+
+    std::cout << "Performing filters ... " << std::endl;
+    performParallelMethod(&all_video_frames, &all_performed_video_frames, &filters, &numThreads);
+
+    end_time = clock();
+
+    std::cout << "Time to perform filters = " << (end_time - begin_time) / CLOCKS_PER_SEC << "s" << std::endl;
+
+    std::cout << "Playing performed video ... " << std::endl;
+    playPerformedVideo(&all_performed_video_frames);
 
     return 0;
 }
