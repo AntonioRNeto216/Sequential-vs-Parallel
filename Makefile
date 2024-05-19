@@ -153,6 +153,78 @@ main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+src/parallel.o: src/parallel.cpp.o
+.PHONY : src/parallel.o
+
+# target to build an object file
+src/parallel.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel.cpp.o
+.PHONY : src/parallel.cpp.o
+
+src/parallel.i: src/parallel.cpp.i
+.PHONY : src/parallel.i
+
+# target to preprocess a source file
+src/parallel.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel.cpp.i
+.PHONY : src/parallel.cpp.i
+
+src/parallel.s: src/parallel.cpp.s
+.PHONY : src/parallel.s
+
+# target to generate assembly for a file
+src/parallel.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel.cpp.s
+.PHONY : src/parallel.cpp.s
+
+src/sequential.o: src/sequential.cpp.o
+.PHONY : src/sequential.o
+
+# target to build an object file
+src/sequential.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/sequential.cpp.o
+.PHONY : src/sequential.cpp.o
+
+src/sequential.i: src/sequential.cpp.i
+.PHONY : src/sequential.i
+
+# target to preprocess a source file
+src/sequential.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/sequential.cpp.i
+.PHONY : src/sequential.cpp.i
+
+src/sequential.s: src/sequential.cpp.s
+.PHONY : src/sequential.s
+
+# target to generate assembly for a file
+src/sequential.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/sequential.cpp.s
+.PHONY : src/sequential.cpp.s
+
+src/util.o: src/util.cpp.o
+.PHONY : src/util.o
+
+# target to build an object file
+src/util.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/util.cpp.o
+.PHONY : src/util.cpp.o
+
+src/util.i: src/util.cpp.i
+.PHONY : src/util.i
+
+# target to preprocess a source file
+src/util.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/util.cpp.i
+.PHONY : src/util.cpp.i
+
+src/util.s: src/util.cpp.s
+.PHONY : src/util.s
+
+# target to generate assembly for a file
+src/util.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/util.cpp.s
+.PHONY : src/util.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -165,6 +237,15 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... src/parallel.o"
+	@echo "... src/parallel.i"
+	@echo "... src/parallel.s"
+	@echo "... src/sequential.o"
+	@echo "... src/sequential.i"
+	@echo "... src/sequential.s"
+	@echo "... src/util.o"
+	@echo "... src/util.i"
+	@echo "... src/util.s"
 .PHONY : help
 
 
