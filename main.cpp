@@ -1,4 +1,5 @@
 #include <iostream>
+#include <queue>
 #include <vector>
 #include <unistd.h> 
 #include <pthread.h>
@@ -11,14 +12,26 @@ typedef struct Filters_s
     cv::Mat h2 = (cv::Mat_<float>(3,3) << -1, -1, -1, -1, 8, -1, -1, -1, -1);
 } Filters_t;
 
-typedef struct PerformFilterParallelParameters_s
+typedef struct PerformH1ParallelParameters_s
 {
     std::vector<cv::Mat> *input;
     std::vector<cv::Mat> *result;
     cv::Mat *filter;
     int *index;
-    pthread_mutex_t *mutex;
-} PerformFilterParallelParameters_t;
+    pthread_mutex_t *mutex_index;
+    std::queue<int> *indexes_to_process;
+    pthread_mutex_t *mutex_indexes_to_process;
+} PerformH1ParallelParameters_t;
+
+typedef struct PerformH2ParallelParameters_s
+{
+    std::vector<cv::Mat> *input;
+    std::vector<cv::Mat> *result;
+    cv::Mat *filter;
+    std::queue<int> *indexes_to_process;
+    pthread_mutex_t *mutex_indexes_to_process;
+    int *counter_frames_processed;
+} PerformH2ParallelParameters_t;
 
 void performFilter(
     cv::Mat *input,
@@ -109,33 +122,35 @@ void performSequencialMethod(
     }
 }
 
-void *threadFunction(
+void *h1ThreadFunction(
     void *arg
 )
 {
-    PerformFilterParallelParameters_t *args = (PerformFilterParallelParameters_t *)arg;
+    PerformH1ParallelParameters_t *args = (PerformH1ParallelParameters_t *)arg;
 
     std::vector<cv::Mat> *input = args->input;
     std::vector<cv::Mat> *result = args->result;
     cv::Mat *filter = args->filter;
     int *index = args->index;
-    pthread_mutex_t *mutex = args->mutex;
+    pthread_mutex_t *mutex_index = args->mutex_index;
+    std::queue<int> *indexes_to_process = args->indexes_to_process;
+    pthread_mutex_t *mutex_indexes_to_process = args->mutex_indexes_to_process;
 
     int local_index;
     while (true)
     {
-        pthread_mutex_lock(mutex);
+        pthread_mutex_lock(mutex_index);
         
-        if (*index == input->size() - 1)
+        if (*index == input->size())
         {
-            pthread_mutex_unlock(mutex);
+            pthread_mutex_unlock(mutex_index);
             break;
         }
 
         local_index = *index;
         (*index)++;
         
-        pthread_mutex_unlock(mutex);
+        pthread_mutex_unlock(mutex_index);
 
         cv::Mat resultValue = cv::Mat::zeros(
             input->at(local_index).size(), 
@@ -151,6 +166,68 @@ void *threadFunction(
         );
 
         result->at(local_index) = resultValue;
+
+        pthread_mutex_lock(mutex_indexes_to_process);
+        indexes_to_process->push(local_index);
+        pthread_mutex_unlock(mutex_indexes_to_process);
+    }
+
+    pthread_exit(NULL);
+}
+
+void *h2ThreadFunction(
+    void *arg
+)
+{
+    PerformH2ParallelParameters_t *args = (PerformH2ParallelParameters_t *)arg;
+
+    std::vector<cv::Mat> *input = args->input;
+    std::vector<cv::Mat> *result = args->result;
+    cv::Mat *filter = args->filter;
+    std::queue<int> *indexes_to_process = args->indexes_to_process;
+    pthread_mutex_t *mutex_indexes_to_process = args->mutex_indexes_to_process;
+    int *counter_frames_processed = args->counter_frames_processed;
+
+    int local_index;
+    while (true)
+    {
+        pthread_mutex_lock(mutex_indexes_to_process);
+        
+        if (indexes_to_process->size() > 0)
+        {
+            local_index = indexes_to_process->front();
+            indexes_to_process->pop();
+            (*counter_frames_processed)++;
+        }
+        else if (*counter_frames_processed == input->size())
+        {
+            pthread_mutex_unlock(mutex_indexes_to_process);
+            break;
+        }
+        else
+        {
+            local_index = -1;
+        }
+        
+        pthread_mutex_unlock(mutex_indexes_to_process);
+
+        if (local_index != -1)
+        {
+            cv::Mat resultValue = cv::Mat::zeros(
+                input->at(local_index).size(), 
+                input->at(local_index).type()
+            );
+
+            performFilter(
+                &input->at(local_index),
+                &resultValue,
+                filter,
+                input->at(local_index).size().height,
+                input->at(local_index).size().width
+            );
+
+            result->at(local_index) = resultValue;
+        }
     }
 
     pthread_exit(NULL);
@@ -167,49 +244,57 @@ void performParallelMethod(
     int index_to_process_input = 0;
     std::vector<pthread_t> threads_input(*numThreads);
     std::vector<cv::Mat> buffer(all_video_frames->size());
-    std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_input(*numThreads);
+    std::vector<PerformH1ParallelParameters_t> vector_performH1ParallelParameters(*numThreads);
 
     pthread_mutex_t mutex_index_to_process_input;
     pthread_mutex_init(&mutex_index_to_process_input, NULL);
     
     // Buffer -> output
-    // int index_to_process_buffer = -1;
-    // std::vector<pthread_t> threads_output(*numThreads);
-    // std::vector<PerformFilterParallelParameters_t> vector_performFilterParallelParameters_buffer;
+    int counter_frames_processed = 0;
+    std::queue<int> indexes_to_process_buffer;
+    std::vector<pthread_t> threads_output(*numThreads);
+    std::vector<PerformH2ParallelParameters_t> vector_performH2ParallelParameters(*numThreads);
 
-    // pthread_mutex_t mutex_index_to_process_output;
-    // pthread_mutex_init(&mutex_index_to_process_output, NULL);
+    pthread_mutex_t mutex_index_to_process_output;
+    pthread_mutex_init(&mutex_index_to_process_output, NULL);
 
     for (int i = 0; i < *numThreads; ++i)
     {
-        vector_performFilterParallelParameters_input[i].input = all_video_frames;
-        vector_performFilterParallelParameters_input[i].result = all_performed_video_frames;//&buffer;
-        vector_performFilterParallelParameters_input[i].filter = &filters->h1;
-        vector_performFilterParallelParameters_input[i].index = &index_to_process_input;
-        vector_performFilterParallelParameters_input[i].mutex = &mutex_index_to_process_input;
+        vector_performH1ParallelParameters[i].input = all_video_frames;
+        vector_performH1ParallelParameters[i].result = &buffer;
+        vector_performH1ParallelParameters[i].filter = &filters->h1;
+        vector_performH1ParallelParameters[i].index = &index_to_process_input;
+        vector_performH1ParallelParameters[i].mutex_index = &mutex_index_to_process_input;
+        vector_performH1ParallelParameters[i].indexes_to_process = &indexes_to_process_buffer;
+        vector_performH1ParallelParameters[i].mutex_indexes_to_process = &mutex_index_to_process_output;
 
-        pthread_create(&threads_input[i], NULL, threadFunction, (void*)&vector_performFilterParallelParameters_input[i]);
+        pthread_create(&threads_input[i], NULL, h1ThreadFunction, (void*)&vector_performH1ParallelParameters[i]);
+    }
 
-        // PerformFilterParallelParameters_t performFilterParallelParameters_buffer;
-        // performFilterParallelParameters_buffer.input = &buffer;
-        // performFilterParallelParameters_buffer.result = all_performed_video_frames;
-        // performFilterParallelParameters_buffer.filter = &filters->h2;
-        // performFilterParallelParameters_buffer.index = &index_to_process_buffer;
-        // performFilterParallelParameters_buffer.mutex = &mutex_index_to_process_output;
+    for (int i = 0; i < *numThreads; ++i)
+    {
+        vector_performH2ParallelParameters[i].input = &buffer;
+        vector_performH2ParallelParameters[i].result = all_performed_video_frames;
+        vector_performH2ParallelParameters[i].filter = &filters->h2;
+        vector_performH2ParallelParameters[i].indexes_to_process = &indexes_to_process_buffer;
+        vector_performH2ParallelParameters[i].mutex_indexes_to_process = &mutex_index_to_process_output;
+        vector_performH2ParallelParameters[i].counter_frames_processed = &counter_frames_processed;
 
-        // vector_performFilterParallelParameters_buffer.push_back(performFilterParallelParameters_buffer);
-
-        // pthread_create(&threads_output[i], NULL, threadFunction, (void*)&vector_performFilterParallelParameters_buffer[i]);
+        pthread_create(&threads_output[i], NULL, h2ThreadFunction, (void*)&vector_performH2ParallelParameters[i]);
     }
 
     for (int i = 0; i < *numThreads; ++i) 
     {
         pthread_join(threads_input[i], NULL);
-        // pthread_join(threads_output[i], NULL);
+    }
+
+    for (int i = 0; i < *numThreads; ++i) 
+    {
+        pthread_join(threads_output[i], NULL);
     }
 
     pthread_mutex_destroy(&mutex_index_to_process_input);
-    // pthread_mutex_destroy(&mutex_index_to_process_output);
+    pthread_mutex_destroy(&mutex_index_to_process_output);
 }
 
 void getFrames(
