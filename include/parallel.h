@@ -1,10 +1,10 @@
+#ifndef PARALLEL_H
+#define PARALLEL_H
+
 #include <vector>
 #include <opencv2/opencv.hpp>
 
 #include <defines.h>
-
-#ifndef PARALLEL_H
-#define PARALLEL_H
 
 void *h1ThreadFunction(
     void *arg

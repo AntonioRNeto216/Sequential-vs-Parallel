@@ -177,6 +177,30 @@ src/parallel.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel.cpp.s
 .PHONY : src/parallel.cpp.s
 
+src/parallel_open_mp.o: src/parallel_open_mp.cpp.o
+.PHONY : src/parallel_open_mp.o
+
+# target to build an object file
+src/parallel_open_mp.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel_open_mp.cpp.o
+.PHONY : src/parallel_open_mp.cpp.o
+
+src/parallel_open_mp.i: src/parallel_open_mp.cpp.i
+.PHONY : src/parallel_open_mp.i
+
+# target to preprocess a source file
+src/parallel_open_mp.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel_open_mp.cpp.i
+.PHONY : src/parallel_open_mp.cpp.i
+
+src/parallel_open_mp.s: src/parallel_open_mp.cpp.s
+.PHONY : src/parallel_open_mp.s
+
+# target to generate assembly for a file
+src/parallel_open_mp.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/projeto1.dir/build.make CMakeFiles/projeto1.dir/src/parallel_open_mp.cpp.s
+.PHONY : src/parallel_open_mp.cpp.s
+
 src/sequential.o: src/sequential.cpp.o
 .PHONY : src/sequential.o
 
@@ -240,6 +264,9 @@ help:
 	@echo "... src/parallel.o"
 	@echo "... src/parallel.i"
 	@echo "... src/parallel.s"
+	@echo "... src/parallel_open_mp.o"
+	@echo "... src/parallel_open_mp.i"
+	@echo "... src/parallel_open_mp.s"
 	@echo "... src/sequential.o"
 	@echo "... src/sequential.i"
 	@echo "... src/sequential.s"

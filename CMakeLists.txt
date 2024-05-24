@@ -11,10 +11,12 @@ add_executable(projeto1
     src/parallel.cpp
     src/sequential.cpp
     src/util.cpp
+    src/parallel_open_mp.cpp
     include/defines.h
     include/parallel.h
     include/sequential.h
     include/util.h
+    include/parallel_open_mp.h
 )
 
 target_link_libraries( projeto1 PRIVATE OpenMP::OpenMP_CXX ${OpenCV_LIBS} )

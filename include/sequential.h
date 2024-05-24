@@ -1,10 +1,10 @@
+#ifndef SEQUENTIAL_METHOD_H
+#define SEQUENTIAL_METHOD_H
+
 #include <vector>
 #include <opencv2/opencv.hpp>
 
 #include <defines.h>
-
-#ifndef SEQUENTIAL_METHOD_H
-#define SEQUENTIAL_METHOD_H
 
 void performSequencialMethod(
     std::vector<cv::Mat> *all_video_frames,

@@ -1,10 +1,10 @@
+#ifndef UTIL_H
+#define UTIL_H
+
 #include <vector>
 #include <opencv2/opencv.hpp>
 
 #include <defines.h>
-
-#ifndef UTIL_H
-#define UTIL_H
 
 void performFilter(
     cv::Mat *input,

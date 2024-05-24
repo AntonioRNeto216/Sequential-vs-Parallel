@@ -1,7 +1,7 @@
-#include <opencv2/opencv.hpp>
-
 #ifndef DEFINES_H
 #define DEFINES_H
+
+#include <opencv2/opencv.hpp>
 
 enum Method
 {
