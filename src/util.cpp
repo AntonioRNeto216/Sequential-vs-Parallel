@@ -8,9 +8,13 @@ void performFilter(
     int cols
 )
 {
+    // Perform convolution operation on the input frame with filter parameter.
+    // The result is stored in result parameter
+
     int mm, nn, ii, jj;
     float pixelResult;
 
+    // Iterate over all pixels performing a kernel with size 3x3 with padding
     for (int i = 0; i < rows; ++i)
     {
         for (int j = 0; j < cols; ++j)
@@ -47,6 +51,8 @@ void getFrames(
     std::string *video_path
 )
 {
+    // Get all frames from a source video
+
     std::cout << std::endl << "Getting source video ... " << std::endl;
 
     videoCapture->open(*video_path);
@@ -72,6 +78,8 @@ void playPerformedVideo(
     std::vector<cv::Mat> *all_video_frames
 )
 {
+    // Playing performed video to user the process result
+    
     std::cout << "Playing performed video ... " << std::endl;
     
     const std::string windowName = "Perfomed Video";
@@ -89,6 +97,8 @@ void playPerformedVideo(
 
 int videoMenu()
 {
+    // User can choose video 1, 2, 3  or 4
+
     int input;
 
     std::cout << std::endl << "Choose a video" << std::endl;
@@ -112,6 +122,8 @@ int videoMenu()
 
 Method methodMenu()
 {
+    // User can choose a method (Sequential, Parallel - Pthreads or Parallel - OpenMP)
+
     int input;
 
     std::cout << std::endl << "Choose a method" << std::endl;
@@ -142,6 +154,8 @@ Method methodMenu()
 
 int numThreadsMenu()
 {
+    // User can choose the number of threads
+
     int numThreads;
 
     std::cout << "Choose number of threads: ";

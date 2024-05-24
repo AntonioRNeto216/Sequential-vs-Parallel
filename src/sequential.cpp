@@ -9,6 +9,9 @@ void performSequencialMethod(
     Filters_t *filters
 )
 {
+    // Iterate over all frames stored in all_video_frames and perform h1 and h2 filters.
+    // Moreover, the result is stored in the all_performed_video_frames array
+
     std::cout << "Performing sequencial method ... " << std::endl;
 
     cv::Mat currentFrame;

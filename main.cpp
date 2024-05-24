@@ -48,13 +48,16 @@ int main()
         numThreads = 0;
     }
 
-    // Logic process
+    // Get all frames from a video
     getFrames(&all_video_frames, &videoCapture, &video);
 
+    // Array to store all performed frames
     std::vector<cv::Mat> all_performed_video_frames(all_video_frames.size());
 
+    // Start time
     auto begin_time = std::chrono::high_resolution_clock::now();
 
+    // Call function to perform the chosen method
     switch (method)
     {
         case SEQUENTIAL:
@@ -68,10 +71,12 @@ int main()
             break;
     }
 
+    // End time
     auto end_time = std::chrono::high_resolution_clock::now();
 
     std::cout << "Time to perform filters = " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time).count() << "ms" << std::endl;
 
+    // Play video to show the result to user
     playPerformedVideo(&all_performed_video_frames);
     
     return 0;

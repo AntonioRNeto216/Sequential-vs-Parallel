@@ -8,6 +8,7 @@ void *h1ThreadFunction(
 {
     PerformH1ParallelParameters_t *args = (PerformH1ParallelParameters_t *)arg;
 
+    // Get parameters
     std::vector<cv::Mat> *input = args->input;
     std::vector<cv::Mat> *result = args->result;
     cv::Mat *filter = args->filter;
@@ -19,6 +20,7 @@ void *h1ThreadFunction(
     int local_index;
     while (true)
     {
+        // Lock index to update it and copy it's value in local_index
         pthread_mutex_lock(mutex_index);
         
         if (*index == input->size())
@@ -32,11 +34,13 @@ void *h1ThreadFunction(
         
         pthread_mutex_unlock(mutex_index);
 
+        // Initialize a matrix of zeros
         cv::Mat resultValue = cv::Mat::zeros(
             input->at(local_index).size(), 
             input->at(local_index).type()
         );
 
+        // Perform filter
         performFilter(
             &input->at(local_index),
             &resultValue,
@@ -45,8 +49,10 @@ void *h1ThreadFunction(
             input->at(local_index).size().width
         );
 
+        // Store result
         result->at(local_index) = resultValue;
 
+        // Lock the index_to_process queue to show new index to perform h2 in the second block of threads.
         pthread_mutex_lock(mutex_indexes_to_process);
         indexes_to_process->push(local_index);
         pthread_mutex_unlock(mutex_indexes_to_process);
@@ -61,6 +67,7 @@ void *h2ThreadFunction(
 {
     PerformH2ParallelParameters_t *args = (PerformH2ParallelParameters_t *)arg;
 
+    // Get parameters
     std::vector<cv::Mat> *input = args->input;
     std::vector<cv::Mat> *result = args->result;
     cv::Mat *filter = args->filter;
@@ -71,6 +78,7 @@ void *h2ThreadFunction(
     int local_index;
     while (true)
     {
+        // Lock indexes_to_process to analyse if there is index to process
         pthread_mutex_lock(mutex_indexes_to_process);
         
         if (indexes_to_process->size() > 0)
@@ -91,13 +99,16 @@ void *h2ThreadFunction(
         
         pthread_mutex_unlock(mutex_indexes_to_process);
 
+        // If there is at least one index to perform h2, the following logic is applied
         if (local_index != -1)
         {
+            // Initialize a matrix of zeros
             cv::Mat resultValue = cv::Mat::zeros(
                 input->at(local_index).size(), 
                 input->at(local_index).type()
             );
 
+            // Perform filter
             performFilter(
                 &input->at(local_index),
                 &resultValue,
@@ -106,6 +117,7 @@ void *h2ThreadFunction(
                 input->at(local_index).size().width
             );
 
+            // Store result
             result->at(local_index) = resultValue;
         }
     }
@@ -120,6 +132,10 @@ void performParallelMethod(
     int *numThreads
 )
 {
+    // The goal is to perform h1 filter in parallel in all frames from all_video_frames array and store it in a buffer.
+    // The buffer is consumed by another set of threads to perform h2 in parallel too.
+    // The result is stored in the all_performed_video_frames.
+
     std::cout << "Performing parallel method ... " << std::endl;
 
     // Input -> buffer
@@ -140,6 +156,7 @@ void performParallelMethod(
     pthread_mutex_t mutex_index_to_process_output;
     pthread_mutex_init(&mutex_index_to_process_output, NULL);
 
+    // Define parameters and initiliaze threads to perform h1
     for (int i = 0; i < *numThreads; ++i)
     {
         vector_performH1ParallelParameters[i].input = all_video_frames;
@@ -153,6 +170,7 @@ void performParallelMethod(
         pthread_create(&threads_input[i], NULL, h1ThreadFunction, (void*)&vector_performH1ParallelParameters[i]);
     }
 
+    // Define parameters and initiliaze threads to perform h2
     for (int i = 0; i < *numThreads; ++i)
     {
         vector_performH2ParallelParameters[i].input = &buffer;
@@ -165,16 +183,19 @@ void performParallelMethod(
         pthread_create(&threads_output[i], NULL, h2ThreadFunction, (void*)&vector_performH2ParallelParameters[i]);
     }
 
+    // Join h1 threads
     for (int i = 0; i < *numThreads; ++i) 
     {
         pthread_join(threads_input[i], NULL);
     }
 
+    // Join h2 threads
     for (int i = 0; i < *numThreads; ++i) 
     {
         pthread_join(threads_output[i], NULL);
     }
 
+    // Destroy mutex
     pthread_mutex_destroy(&mutex_index_to_process_input);
     pthread_mutex_destroy(&mutex_index_to_process_output);
 }
