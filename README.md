@@ -1,6 +1,8 @@
-# Projeto1_SPD
+# Sequential vs Parallel
+First project required in the subject Sistemas Paralelos e Distribuídos lecture (UNIFEI - 2024.1).
 
-- Root do projeto
+## How to run
+Follow commands bellow.
 
 ```
 cmake .
